@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import {
   Dimensions,
   ImageBackground,
+  KeyboardAvoidingView,
+  Platform,
   StyleSheet,
   Text,
   TextInput,
@@ -25,48 +27,69 @@ const Start = ({ navigation }) => {
       style={styles.background}
       resizeMode="cover"
     >
-      <View style={styles.container}>
-        <Text style={styles.title}>ChatApp</Text>
+      <KeyboardAvoidingView
+        style={{ flex: 1, width: "100%" }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
+        <View style={styles.container}>
+          <Text style={styles.title} accessibilityRole="header">
+            ChatApp
+          </Text>
 
-        <View style={styles.box}>
-          <Text style={styles.label}>Your Name</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Type here..."
-            placeholderTextColor="rgba(117,112,131,0.5)"
-            value={name}
-            onChangeText={setName}
-          />
+          <View style={styles.box}>
+            {/* Name Input */}
+            <Text style={styles.label}>Your Name</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Type here..."
+              placeholderTextColor="rgba(117,112,131,0.5)"
+              value={name}
+              onChangeText={setName}
+              accessible={true}
+              accessibilityLabel="Name input field"
+              accessibilityHint="Enter your name to display in the chat"
+            />
 
-          <Text style={styles.label}>Choose Background Color:</Text>
-          <View style={styles.colorContainer}>
-            {colors.map((color) => (
-              <TouchableOpacity
-                key={color}
-                style={[
-                  styles.colorCircle,
-                  { backgroundColor: color },
-                  selectedColor === color && styles.selectedColor,
-                ]}
-                onPress={() => setSelectedColor(color)}
-              />
-            ))}
+            {/* Background Color Options */}
+            <Text style={styles.label}>Choose Background Color:</Text>
+            <View style={styles.colorContainer}>
+              {colors.map((color, index) => (
+                <TouchableOpacity
+                  key={color}
+                  style={[
+                    styles.colorCircle,
+                    { backgroundColor: color },
+                    selectedColor === color && styles.selectedColor,
+                  ]}
+                  onPress={() => setSelectedColor(color)}
+                  accessible={true}
+                  accessibilityLabel={`Color option ${index + 1}`}
+                  accessibilityHint="Double tap to select this as your chat background"
+                  accessibilityRole="button"
+                />
+              ))}
+            </View>
+
+            {/* Start Button */}
+            <TouchableOpacity
+              style={styles.button}
+              onPress={() => {
+                if (!name.trim()) {
+                  alert("Please enter your name!");
+                } else {
+                  navigation.navigate("Chat", { name, color: selectedColor });
+                }
+              }}
+              accessible={true}
+              accessibilityLabel="Start chatting button"
+              accessibilityHint="Double tap to enter the chat screen"
+              accessibilityRole="button"
+            >
+              <Text style={styles.buttonText}>Start Chatting</Text>
+            </TouchableOpacity>
           </View>
-
-          <TouchableOpacity
-            style={styles.button}
-            onPress={() => {
-              if (!name.trim()) {
-                alert("Please enter your name!");
-              } else {
-                navigation.navigate("Chat", { name, color: selectedColor });
-              }
-            }}
-          >
-            <Text style={styles.buttonText}>Start Chatting</Text>
-          </TouchableOpacity>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </ImageBackground>
   );
 };
@@ -100,7 +123,7 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 16,
     fontWeight: "300",
-    color: "#757083",
+    color: "#333333", // darkened for better contrast
     marginBottom: 5,
   },
   input: {
