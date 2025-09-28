@@ -1,99 +1,75 @@
-import { Ionicons } from "@expo/vector-icons"; // Icon library
 import React, { useEffect, useState } from "react";
-import {
-  KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { KeyboardAvoidingView, Platform, StyleSheet, View } from "react-native";
 import { Bubble, GiftedChat } from "react-native-gifted-chat";
 
-const Chat = ({ route, navigation }) => {
-  // State to hold chat messages
+// Firestore imports
+import {
+  addDoc,
+  collection,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+} from "firebase/firestore";
+
+const Chat = ({ db, route }) => {
+  const { uid, name, color } = route.params; // values passed from Start
   const [messages, setMessages] = useState([]);
 
-  // Get user info (name + background color) from Start screen
-  const { name, color } = route.params || {};
-
-  // Set the navigation bar title to the user's name
+  // Listen to Firestore messages in real-time
   useEffect(() => {
-    if (name) navigation.setOptions({ title: name });
-  }, [name, navigation]);
+    const messagesQuery = query(
+      collection(db, "messages"),
+      orderBy("createdAt", "desc")
+    );
 
-  // Initialize with static messages (system + user)
-  useEffect(() => {
-    setMessages([
-      {
-        _id: 1,
-        text: "You’ve entered the chat.", // system message
-        createdAt: new Date(),
-        system: true,
-      },
-      {
-        _id: 2,
-        text: "Hello developer!", // user message
-        createdAt: new Date(),
-        user: {
-          _id: 2,
-          name: "React Native",
-          avatar: "https://placeimg.com/140/140/any", // default avatar
-        },
-      },
-    ]);
-  }, []);
+    const unsubscribe = onSnapshot(messagesQuery, (snapshot) => {
+      const loadedMessages = snapshot.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          ...data,
+          createdAt: data.createdAt?.toDate() || new Date(), // fallback if createdAt is missing
+        };
+      });
 
-  // Handle sending new messages
+      setMessages(loadedMessages);
+    });
+
+    return () => unsubscribe(); // cleanup listener
+  }, [db]);
+
+  // Send message to Firestore
   const onSend = (newMessages = []) => {
-    setMessages((previousMessages) =>
-      GiftedChat.append(previousMessages, newMessages)
-    );
+    if (!newMessages.length) return;
+
+    const message = {
+      ...newMessages[0],
+      createdAt: serverTimestamp(), // server timestamp for consistency
+      user: { _id: uid, name }, // ensure correct user info
+    };
+
+    addDoc(collection(db, "messages"), message).catch((err) => {
+      console.log("Error sending message:", err);
+    });
   };
 
-  // Customize the appearance of chat bubbles
-  const renderBubble = (props) => {
-    return (
-      <Bubble
-        {...props}
-        wrapperStyle={{
-          right: {
-            backgroundColor: "#000", // bubble color for the current user
-          },
-          left: {
-            backgroundColor: "#FFF", // bubble color for other users
-          },
-        }}
-        textStyle={{
-          right: {
-            color: "#FFF", // white text on black bubble
-          },
-          left: {
-            color: "#000", // black text on white bubble
-          },
-        }}
-      />
-    );
-  };
-
-  // Custom action button (for future features like sending images/location)
-  const ActionButton = ({ onPress }) => {
-    return (
-      <TouchableOpacity
-        accessible={true}
-        accessibilityLabel="More options"
-        accessibilityHint="Lets you choose to send an image or your location."
-        accessibilityRole="button"
-        onPress={onPress}
-        style={styles.button}
-      >
-        <Ionicons name="add-circle-outline" size={28} color="black" />
-      </TouchableOpacity>
-    );
-  };
+  // Customize bubble colors
+  const renderBubble = (props) => (
+    <Bubble
+      {...props}
+      wrapperStyle={{
+        right: { backgroundColor: "#000" },
+        left: { backgroundColor: "#FFF" },
+      }}
+      textStyle={{
+        right: { color: "#FFF" },
+        left: { color: "#000" },
+      }}
+    />
+  );
 
   return (
     <View style={[styles.container, { backgroundColor: color || "#fff" }]}>
-      {/* KeyboardAvoidingView makes sure input is not hidden by keyboard */}
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -102,20 +78,11 @@ const Chat = ({ route, navigation }) => {
         <GiftedChat
           messages={messages}
           onSend={(messages) => onSend(messages)}
-          user={{ _id: 1, name: name || "You" }} // current user info
-          //alwaysShowSend={true} // always show send button
-          showUserAvatar={true} // show avatars
-          renderUsernameOnMessage={true} // display usernames
-          renderBubble={renderBubble} // custom bubble styling
-          renderActions={(props) => (
-            <ActionButton onPress={() => alert("More options pressed")} />
-          )}
-          alwaysShowSend={true}
-          textInputProps={{
-            editable: true,
-            autoFocus: true,
-            placeholder: "Type a message...",
-          }}
+          user={{ _id: uid, name }}
+          renderBubble={renderBubble}
+          showUserAvatar
+          alwaysShowSend
+          renderUsernameOnMessage
         />
       </KeyboardAvoidingView>
     </View>
@@ -124,9 +91,6 @@ const Chat = ({ route, navigation }) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  button: {
-    marginHorizontal: 8,
-  },
 });
 
 export default Chat;
