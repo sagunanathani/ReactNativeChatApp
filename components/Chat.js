@@ -1,59 +1,92 @@
-import React, { useEffect, useState } from "react";
-import { KeyboardAvoidingView, Platform, StyleSheet, View } from "react-native";
-import { Bubble, GiftedChat } from "react-native-gifted-chat";
-
-// Firestore imports
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import NetInfo from "@react-native-community/netinfo";
 import {
   addDoc,
   collection,
+  disableNetwork,
+  enableNetwork,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
 } from "firebase/firestore";
+import { useEffect, useState } from "react";
+import { Platform, StyleSheet, Text, View } from "react-native";
+import { Bubble, GiftedChat, InputToolbar } from "react-native-gifted-chat";
 
 const Chat = ({ db, route }) => {
-  const { uid, name, color } = route.params; // values passed from Start
+  const { uid, name, color } = route.params;
   const [messages, setMessages] = useState([]);
+  const [isConnected, setIsConnected] = useState(true);
 
-  // Listen to Firestore messages in real-time
+  // Listen to network changes
   useEffect(() => {
-    const messagesQuery = query(
-      collection(db, "messages"),
-      orderBy("createdAt", "desc")
-    );
-
-    const unsubscribe = onSnapshot(messagesQuery, (snapshot) => {
-      const loadedMessages = snapshot.docs.map((doc) => {
-        const data = doc.data();
-        return {
-          ...data,
-          createdAt: data.createdAt?.toDate() || new Date(), // fallback if createdAt is missing
-        };
-      });
-
-      setMessages(loadedMessages);
+    const unsubscribeNet = NetInfo.addEventListener((state) => {
+      setIsConnected(state.isConnected && state.isInternetReachable);
     });
+    return () => unsubscribeNet();
+  }, []);
 
-    return () => unsubscribe(); // cleanup listener
-  }, [db]);
+  // Load messages from Firestore or AsyncStorage
+  useEffect(() => {
+    let unsubscribe;
+
+    const loadMessages = async () => {
+      if (isConnected) {
+        enableNetwork(db); // ensure Firestore is online
+
+        const messagesQuery = query(
+          collection(db, "messages"),
+          orderBy("createdAt", "desc")
+        );
+
+        unsubscribe = onSnapshot(messagesQuery, async (snapshot) => {
+          const loadedMessages = snapshot.docs.map((doc) => ({
+            ...doc.data(),
+            createdAt: doc.data().createdAt?.toDate() || new Date(),
+          }));
+
+          setMessages(loadedMessages);
+
+          try {
+            await AsyncStorage.setItem(
+              "chat_messages",
+              JSON.stringify(loadedMessages)
+            );
+          } catch (err) {
+            console.log("Error caching messages:", err);
+          }
+        });
+      } else {
+        disableNetwork(db); // prevent Firestore errors
+        try {
+          const cached = await AsyncStorage.getItem("chat_messages");
+          if (cached) setMessages(JSON.parse(cached));
+        } catch (err) {
+          console.log("Error loading cached messages:", err);
+        }
+      }
+    };
+
+    loadMessages();
+
+    return () => unsubscribe && unsubscribe();
+  }, [db, isConnected]);
 
   // Send message to Firestore
   const onSend = (newMessages = []) => {
-    if (!newMessages.length) return;
+    if (!newMessages.length || !isConnected) return;
 
     const message = {
       ...newMessages[0],
-      createdAt: serverTimestamp(), // server timestamp for consistency
-      user: { _id: uid, name }, // ensure correct user info
+      createdAt: serverTimestamp(),
+      user: { _id: uid, name },
     };
 
-    addDoc(collection(db, "messages"), message).catch((err) => {
-      console.log("Error sending message:", err);
-    });
+    addDoc(collection(db, "messages"), message).catch(console.log);
   };
 
-  // Customize bubble colors
+  // Customize message bubble
   const renderBubble = (props) => (
     <Bubble
       {...props}
@@ -68,29 +101,42 @@ const Chat = ({ db, route }) => {
     />
   );
 
+  // Render InputToolbar only if online
+  const renderInputToolbar = (props) => {
+    if (isConnected) return <InputToolbar {...props} />;
+    return null;
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: color || "#fff" }]}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 120 : 0}
-      >
-        <GiftedChat
-          messages={messages}
-          onSend={(messages) => onSend(messages)}
-          user={{ _id: uid, name }}
-          renderBubble={renderBubble}
-          showUserAvatar
-          alwaysShowSend
-          renderUsernameOnMessage
-        />
-      </KeyboardAvoidingView>
+      {!isConnected && (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineText}>You are offline</Text>
+        </View>
+      )}
+      <GiftedChat
+        messages={messages}
+        onSend={onSend}
+        user={{ _id: uid, name }}
+        renderBubble={renderBubble}
+        renderInputToolbar={renderInputToolbar}
+        showUserAvatar
+        alwaysShowSend
+        renderUsernameOnMessage
+        keyboardShouldPersistTaps="handled"
+      />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, paddingTop: Platform.OS === "ios" ? 50 : 0 },
+  offlineBanner: {
+    backgroundColor: "red",
+    padding: 5,
+    alignItems: "center",
+  },
+  offlineText: { color: "white", fontWeight: "bold" },
 });
 
 export default Chat;

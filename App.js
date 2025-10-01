@@ -1,16 +1,21 @@
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import React, { useEffect } from "react";
-import { Platform } from "react-native";
+import { useEffect, useState } from "react";
+import { Alert, Platform } from "react-native";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useNetInfo } from "@react-native-community/netinfo";
 import { initializeApp } from "firebase/app";
 import {
   getAuth,
   getReactNativePersistence,
   initializeAuth,
 } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import {
+  disableNetwork,
+  enableNetwork,
+  getFirestore,
+} from "firebase/firestore";
 
 import Chat from "./components/Chat";
 import Start from "./components/Start";
@@ -39,10 +44,20 @@ if (Platform.OS === "web") {
 const Stack = createNativeStackNavigator();
 
 export default function App() {
+  const netInfo = useNetInfo(); // 👈 hook for network status
+  const [isConnected, setIsConnected] = useState(true);
+
   useEffect(() => {
-    console.log("Platform:", Platform.OS);
-    console.log("Auth object:", auth);
-  }, []);
+    if (netInfo.isConnected === false) {
+      disableNetwork(db);
+      setIsConnected(false);
+      Alert.alert("Offline", "You are offline – viewing cached messages only.");
+    } else if (netInfo.isConnected === true) {
+      enableNetwork(db);
+      setIsConnected(true);
+      Alert.alert("Online", "You are connected – live chat enabled.");
+    }
+  }, [netInfo.isConnected]);
 
   return (
     <NavigationContainer>
@@ -51,7 +66,8 @@ export default function App() {
           {(props) => <Start {...props} auth={auth} />}
         </Stack.Screen>
         <Stack.Screen name="Chat">
-          {(props) => <Chat {...props} db={db} />}
+          {(props) => <Chat {...props} db={db} isConnected={isConnected} />}
+          {/* 👈 pass isConnected */}
         </Stack.Screen>
       </Stack.Navigator>
     </NavigationContainer>
