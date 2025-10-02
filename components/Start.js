@@ -36,7 +36,7 @@ const Start = ({ navigation, auth }) => {
         navigation.navigate("Chat", {
           uid: res.user.uid,
           name,
-          color: "#FFF",
+          color: selectedColor, // ✅ pass the variable, not string
         });
       })
       .catch((err) => {

@@ -10,9 +10,11 @@ import {
   query,
   serverTimestamp,
 } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 import { Bubble, GiftedChat, InputToolbar } from "react-native-gifted-chat";
+import MapView from "react-native-maps";
+import CustomActions from "./CustomActions"; // the new "+" button component
 
 const Chat = ({ db, route }) => {
   const { uid, name, color } = route.params;
@@ -27,14 +29,13 @@ const Chat = ({ db, route }) => {
     return () => unsubscribeNet();
   }, []);
 
-  // Load messages from Firestore or AsyncStorage
+  // Load messages
   useEffect(() => {
     let unsubscribe;
 
     const loadMessages = async () => {
       if (isConnected) {
-        enableNetwork(db); // ensure Firestore is online
-
+        enableNetwork(db);
         const messagesQuery = query(
           collection(db, "messages"),
           orderBy("createdAt", "desc")
@@ -58,7 +59,7 @@ const Chat = ({ db, route }) => {
           }
         });
       } else {
-        disableNetwork(db); // prevent Firestore errors
+        disableNetwork(db);
         try {
           const cached = await AsyncStorage.getItem("chat_messages");
           if (cached) setMessages(JSON.parse(cached));
@@ -69,7 +70,6 @@ const Chat = ({ db, route }) => {
     };
 
     loadMessages();
-
     return () => unsubscribe && unsubscribe();
   }, [db, isConnected]);
 
@@ -107,6 +107,42 @@ const Chat = ({ db, route }) => {
     return null;
   };
 
+  // Render "+" action button
+  const renderActions = (props) => (
+    <CustomActions
+      {...props}
+      onSend={(extra) =>
+        onSend([
+          {
+            _id: Date.now(),
+            createdAt: new Date(),
+            user: { _id: uid, name },
+            ...extra,
+          },
+        ])
+      }
+    />
+  );
+
+  // Render MapView for location messages
+  const renderCustomView = (props) => {
+    const { currentMessage } = props;
+    if (currentMessage.location) {
+      return (
+        <MapView
+          style={{ width: 150, height: 100, borderRadius: 13, margin: 3 }}
+          region={{
+            latitude: currentMessage.location.latitude,
+            longitude: currentMessage.location.longitude,
+            latitudeDelta: 0.0922,
+            longitudeDelta: 0.0421,
+          }}
+        />
+      );
+    }
+    return null;
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: color || "#fff" }]}>
       {!isConnected && (
@@ -120,6 +156,8 @@ const Chat = ({ db, route }) => {
         user={{ _id: uid, name }}
         renderBubble={renderBubble}
         renderInputToolbar={renderInputToolbar}
+        renderActions={renderActions}
+        renderCustomView={renderCustomView}
         showUserAvatar
         alwaysShowSend
         renderUsernameOnMessage
@@ -131,11 +169,7 @@ const Chat = ({ db, route }) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, paddingTop: Platform.OS === "ios" ? 50 : 0 },
-  offlineBanner: {
-    backgroundColor: "red",
-    padding: 5,
-    alignItems: "center",
-  },
+  offlineBanner: { backgroundColor: "red", padding: 5, alignItems: "center" },
   offlineText: { color: "white", fontWeight: "bold" },
 });
 
